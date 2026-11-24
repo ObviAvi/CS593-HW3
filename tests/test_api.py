@@ -210,6 +210,103 @@ class TestMeta:
         x = meta.find_undeclared_variables(ast)
         assert x == {"control"}
 
+    @pytest.mark.parametrize(
+        ("source", "expected"),
+        [
+            pytest.param(
+                "{% if control %}{% set output = 1 %}{% endif %}{{ output }}",
+                {"control", "output"},
+                id="if-without-else",
+            ),
+            pytest.param(
+                "{% if control == 1 %}{% set output = 1 %}"
+                "{% elif control == 2 %}{% set output = 2 %}{% endif %}"
+                "{{ output }}",
+                {"control", "output"},
+                id="if-elif-without-else",
+            ),
+            pytest.param(
+                "{% if control == 1 %}{% set output = 1 %}"
+                "{% elif control == 2 %}"
+                "{% elif control == 3 %}{% set output = 3 %}"
+                "{% else %}{% set output = 4 %}{% endif %}"
+                "{{ output }}",
+                {"control", "output"},
+                id="elif-skips-assignment",
+            ),
+            pytest.param(
+                "{% if control %}{{ output }}{% set output = 1 %}"
+                "{% else %}{% set output = 2 %}{% endif %}"
+                "{{ output }}",
+                {"control", "output"},
+                id="read-before-set-in-branch",
+            ),
+            pytest.param(
+                "{% if control %}{% set output = 1 %}"
+                "{% elif output %}{% set output = 2 %}"
+                "{% else %}{% set output = 3 %}{% endif %}"
+                "{{ output }}",
+                {"control", "output"},
+                id="read-in-elif-test",
+            ),
+            pytest.param(
+                "{{ output }}{% if control %}{% set output = 1 %}"
+                "{% else %}{% set output = 2 %}{% endif %}",
+                {"control", "output"},
+                id="read-before-if",
+            ),
+            pytest.param(
+                "{% if control %}"
+                "{% if flag %}{% set output = 1 %}{% endif %}"
+                "{% else %}{% set output = 2 %}{% endif %}"
+                "{{ output }}",
+                {"control", "flag", "output"},
+                id="nested-if-without-else",
+            ),
+            pytest.param(
+                "{% if control %}"
+                "{% if flag %}{% set output = 1 %}{% else %}{% set output = 2 %}"
+                "{% endif %}"
+                "{% else %}{% set output = 3 %}{% endif %}"
+                "{{ output }}",
+                {"control", "flag"},
+                id="nested-if-all-branches",
+            ),
+            pytest.param(
+                "{% if control %}{% set output %}a{% endset %}"
+                "{% else %}{% set output %}b{% endset %}{% endif %}"
+                "{{ output }}",
+                {"control"},
+                id="block-set-all-branches",
+            ),
+            pytest.param(
+                "{% if control %}{% macro output() %}1{% endmacro %}"
+                "{% else %}{% macro output() %}2{% endmacro %}{% endif %}"
+                "{{ output() }}",
+                {"control"},
+                id="macro-all-branches",
+            ),
+            pytest.param(
+                "{% for item in items %}"
+                "{% if item %}{% set output = 1 %}{% else %}{% set output = 2 %}"
+                "{% endif %}{{ output }}{% endfor %}",
+                {"items"},
+                id="all-branches-in-loop",
+            ),
+            pytest.param(
+                "{% set output = 0 %}"
+                "{% if control %}{% set output = 1 %}{% endif %}"
+                "{{ output }}",
+                {"control"},
+                id="set-before-if",
+            ),
+        ],
+    )
+    def test_find_undeclared_variables_if_branch_scenarios(self, env, source, expected):
+        ast = env.parse(source)
+        x = meta.find_undeclared_variables(ast)
+        assert x == expected
+
     def test_find_refererenced_templates(self, env):
         ast = env.parse('{% extends "layout.html" %}{% include helper %}')
         i = meta.find_referenced_templates(ast)

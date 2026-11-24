@@ -337,6 +337,48 @@ class TestIfCondition:
         tmpl = env.from_string("{% if true %}{% set foo = 1 %}{% endif %}{{ foo }}")
         assert tmpl.render() == "1"
 
+    @pytest.mark.parametrize(
+        ("source", "context", "expected"),
+        [
+            pytest.param(
+                "{% if a %}{% set x = 1 %}{% else %}{% set x = 2 %}{% endif %}{{ x }}",
+                {"a": False},
+                "2",
+                id="all-branches",
+            ),
+            pytest.param(
+                "{% if a %}{% set x = 1 %}{% endif %}{{ x }}",
+                {"a": False},
+                "ctx",
+                id="no-else",
+            ),
+            pytest.param(
+                "{% if a == 1 %}{% set x = 1 %}{% elif a == 2 %}"
+                "{% else %}{% set x = 3 %}{% endif %}{{ x }}",
+                {"a": 2},
+                "ctx",
+                id="elif-skips-assignment",
+            ),
+            pytest.param(
+                "{% if a %}{% set x = 1 %}{% elif x %}{% set x = 2 %}"
+                "{% else %}{% set x = 3 %}{% endif %}{{ x }}",
+                {"a": False},
+                "2",
+                id="read-in-elif-test",
+            ),
+            pytest.param(
+                "{% if a %}{% if b %}{% set x = 1 %}{% endif %}"
+                "{% else %}{% set x = 2 %}{% endif %}{{ x }}",
+                {"a": True, "b": False},
+                "ctx",
+                id="nested-if-without-else",
+            ),
+        ],
+    )
+    def test_set_in_branches_context_fallback(self, env, source, context, expected):
+        tmpl = env.from_string(source)
+        assert tmpl.render(x="ctx", **context) == expected
+
 
 class TestMacros:
     def test_simple(self, env_trim):
