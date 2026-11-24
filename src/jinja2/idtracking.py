@@ -137,6 +137,15 @@ class Symbols:
             target = self.find_ref(name)
             assert target is not None, "should not happen"
 
+            # Assigned in every branch before any read, so the initial
+            # value is never used and the branch's own load is kept.
+            if all(
+                name in sym.stores
+                and sym.loads.get(target, (None,))[0] != VAR_LOAD_RESOLVE
+                for sym in branch_symbols
+            ):
+                continue
+
             if self.parent is not None:
                 outer_target = self.parent.find_ref(name)
                 if outer_target is not None:
@@ -251,6 +260,11 @@ class FrameSymbolVisitor(NodeVisitor):
 
     def visit_If(self, node: nodes.If, **kwargs: t.Any) -> None:
         self.visit(node.test, **kwargs)
+
+        # elif tests run before any branch body on every path reaching them.
+        for elif_ in node.elif_:
+            self.visit(elif_.test, **kwargs)
+
         original_symbols = self.symbols
 
         def inner_visit(nodes: t.Iterable[nodes.Node]) -> "Symbols":
@@ -262,10 +276,12 @@ class FrameSymbolVisitor(NodeVisitor):
             self.symbols = original_symbols
             return rv
 
-        body_symbols = inner_visit(node.body)
-        elif_symbols = inner_visit(node.elif_)
-        else_symbols = inner_visit(node.else_ or ())
-        self.symbols.branch_update([body_symbols, elif_symbols, else_symbols])
+        # Each elif body is its own branch, matching how the compiler emits
+        # them. A missing else is an empty branch that assigns nothing.
+        branch_symbols = [inner_visit(node.body)]
+        branch_symbols.extend(inner_visit(elif_.body) for elif_ in node.elif_)
+        branch_symbols.append(inner_visit(node.else_ or ()))
+        self.symbols.branch_update(branch_symbols)
 
     def visit_Macro(self, node: nodes.Macro, **kwargs: t.Any) -> None:
         self.symbols.store(node.name)
